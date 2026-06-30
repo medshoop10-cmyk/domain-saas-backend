@@ -43,10 +43,12 @@ router.get("/search", optionalAuth, checkUsageLimit("search"), async (req: AuthR
     if (brandable !== undefined) where.isBrandable = brandable;
 
     const cacheKey = `search:${JSON.stringify(params)}`;
-    const cached = await redis.get(cacheKey);
-    if (cached) {
-      return res.json({ ...JSON.parse(cached), cached: true });
-    }
+    try {
+      const cached = await redis.get(cacheKey);
+      if (cached) {
+        return res.json({ ...JSON.parse(cached), cached: true });
+      }
+    } catch {} // Redis unavailable, skip cache
 
     let domains;
     let total: number;
@@ -134,7 +136,7 @@ router.get("/search", optionalAuth, checkUsageLimit("search"), async (req: AuthR
       cached: false,
     };
 
-    await redis.setex(cacheKey, 60, JSON.stringify(result));
+    try { await redis.setex(cacheKey, 60, JSON.stringify(result)); } catch {}
 
     if (domains.length > 0 && q) {
       await recordSearch(domains[0].id).catch(() => {});

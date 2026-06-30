@@ -9,6 +9,7 @@
     "start": "node dist/index.js",
     "migrate": "tsx src/utils/migrate.ts",
     "seed": "tsx src/utils/seed.ts",
+    "seed:demo": "tsx scripts/seedDomains.ts",
     "seed:bulk": "tsx src/utils/seed.ts --bulk=100000",
     "seed:1m": "tsx src/utils/seed.ts --bulk=1000000",
     "optimize": "tsx src/utils/runOptimizations.ts",
