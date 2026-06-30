@@ -44,7 +44,7 @@ export async function requireAuth(req: AuthRequest, res: Response, next: NextFun
   }
 }
 
-export function optionalAuth(req: AuthRequest, res: Response, next: NextFunction) {
+export async function optionalAuth(req: AuthRequest, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return next();
@@ -53,7 +53,14 @@ export function optionalAuth(req: AuthRequest, res: Response, next: NextFunction
   const token = authHeader.split(" ")[1];
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as { userId: string };
-    req.userId = decoded.userId;
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.userId },
+      select: { id: true, plan: true },
+    });
+    if (user) {
+      req.userId = user.id;
+      req.userPlan = user.plan;
+    }
   } catch {
     // Silently continue without auth
   }
