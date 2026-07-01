@@ -15,6 +15,7 @@ import availabilityRoutes from "./routes/availability";
 import billingRoutes from "./routes/billing";
 import userRoutes from "./routes/users";
 import usageRoutes from "./routes/usage";
+import searchRoutes from "./routes/searches";
 import { scoreUnscoredDomains } from "./jobs/domainScorer";
 import { calculateTrending } from "./jobs/trendingCalculator";
 
@@ -52,6 +53,7 @@ app.use("/api/availability", availabilityRoutes);
 app.use("/api/billing", billingRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/usage", usageRoutes);
+app.use("/api/searches", searchRoutes);
 
 // Health check
 app.get("/api/health", (_req, res) => {
