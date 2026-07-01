@@ -87,14 +87,15 @@ router.get("/registrars/stats", async (_req, res: Response) => {
 });
 
 router.get("/registrars/personalized", optionalAuth, async (req: AuthRequest, res: Response) => {
-  const [globalStats, personalStats] = await Promise.all([
-    computeStats(),
-    computeStats(req.userId),
-  ]);
+  const globalStats = await computeStats();
+  let personalStats: Record<string, { clicks: number; value: number }> = {};
+  let personalBest: string | null = null;
 
-  const personalBest = Object.keys(personalStats).length > 0
-    ? Object.entries(personalStats).sort((a, b) => b[1].clicks - a[1].clicks)[0][0]
-    : null;
+  if (req.userId) {
+    personalStats = await computeStats(req.userId);
+    const sorted = Object.entries(personalStats).sort((a, b) => b[1].clicks - a[1].clicks);
+    if (sorted.length > 0) personalBest = sorted[0][0];
+  }
 
   res.json({ global: globalStats, personal: personalStats, personalBest });
 });
