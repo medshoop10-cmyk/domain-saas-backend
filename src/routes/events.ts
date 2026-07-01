@@ -50,22 +50,25 @@ router.post("/click", optionalAuth, async (req: AuthRequest, res: Response) => {
 });
 
 router.get("/registrars/stats", async (_req, res: Response) => {
+  let stats;
   try {
-    const stats = await prisma.click.groupBy({
+    stats = await prisma.click.groupBy({
       by: ["registrar"],
       _count: { registrar: true },
       orderBy: { _count: { registrar: "desc" } },
     });
+  } catch {
+    return res.json({});
+  }
 
-    const result: Record<string, number> = {};
+  const result: Record<string, number> = {};
+  if (stats) {
     for (const s of stats) {
       result[s.registrar] = s._count.registrar;
     }
-
-    res.json(result);
-  } catch (error) {
-    throw error;
   }
+
+  res.json(result);
 });
 
 export default router;
