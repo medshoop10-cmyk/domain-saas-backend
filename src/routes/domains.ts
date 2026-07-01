@@ -272,6 +272,7 @@ router.get("/search", optionalAuth, checkUsageLimit("search"), async (req: AuthR
         score: scored[0].score,
         topOpportunityScore: scored[0].topOpportunityScore,
         reason: scored[0].reason,
+        computedReason: scored[0].computedReason,
         badges: scored[0].badges,
       };
     }
