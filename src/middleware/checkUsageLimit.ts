@@ -17,7 +17,7 @@ const LIMITS: Record<string, (plan: (typeof PLANS)[keyof typeof PLANS]) => Limit
 export function checkUsageLimit(action: "search" | "alert" | "favorite") {
   return async (req: AuthRequest, res: Response, next: NextFunction) => {
     if (!req.userId) {
-      return res.status(401).json({ error: "Authentication required" });
+      return next(); // Allow unauthenticated searches without tracking
     }
 
     const planName = req.userPlan || "FREE";
