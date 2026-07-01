@@ -159,6 +159,7 @@ model Click {
   domainId  String
   registrar String
   position  String?
+  variant   String?
   userId    String?
   createdAt DateTime @default(now())
 
