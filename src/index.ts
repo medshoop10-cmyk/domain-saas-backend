@@ -17,6 +17,7 @@ import userRoutes from "./routes/users";
 import usageRoutes from "./routes/usage";
 import searchRoutes from "./routes/searches";
 import eventRoutes from "./routes/events";
+import feedbackRoutes from "./routes/feedback";
 import { scoreUnscoredDomains } from "./jobs/domainScorer";
 import { calculateTrending } from "./jobs/trendingCalculator";
 
@@ -56,6 +57,7 @@ app.use("/api/users", userRoutes);
 app.use("/api/usage", usageRoutes);
 app.use("/api/searches", searchRoutes);
 app.use("/api/events", eventRoutes);
+app.use("/api/feedback", feedbackRoutes);
 
 // Health check
 app.get("/api/health", (_req, res) => {
