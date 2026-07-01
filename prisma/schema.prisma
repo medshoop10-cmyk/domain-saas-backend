@@ -49,6 +49,7 @@ model User {
   usage         Usage[]
   clicks        Click[]
   feedback      Feedback[]
+  registrarVotes RegistrarVote[]
 }
 
 model Subscription {
@@ -85,8 +86,8 @@ model Domain {
 
   favorites      Favorite[]
   alerts         Alert[]
-  clicks         Click[]
-  feedback       Feedback[]
+  clicks        Click[]
+  feedback      Feedback[]
   trendingDomain TrendingDomain?
 
   @@index([tld, score(sort: Desc)])
@@ -186,6 +187,20 @@ model Feedback {
 
   @@unique([userId, domainId])
   @@index([domainId])
+  @@index([userId])
+}
+
+model RegistrarVote {
+  id        String   @id @default(uuid())
+  userId    String?
+  registrar String
+  score     Int      // 1 = upvote, -1 = downvote
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, registrar])
+  @@index([registrar])
   @@index([userId])
 }
 

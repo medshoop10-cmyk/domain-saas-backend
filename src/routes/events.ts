@@ -88,20 +88,6 @@ router.get("/registrars/stats", async (_req, res: Response) => {
   res.json(result);
 });
 
-router.get("/registrars/personalized", optionalAuth, async (req: AuthRequest, res: Response) => {
-  const globalStats = await computeStats();
-  let personalStats: Record<string, { clicks: number; value: number }> = {};
-  let personalBest: string | null = null;
-
-  if (req.userId) {
-    personalStats = await computeStats(req.userId);
-    const sorted = Object.entries(personalStats).sort((a, b) => b[1].clicks - a[1].clicks);
-    if (sorted.length > 0) personalBest = sorted[0][0];
-  }
-
-  res.json({ global: globalStats, personal: personalStats, personalBest });
-});
-
 router.get("/registrars/variants", async (_req, res: Response) => {
   let clicks;
   try {
@@ -173,6 +159,99 @@ router.get("/experiments/winner", async (_req, res: Response) => {
   const locked = rows.length >= 10 && confidence > 0.25;
 
   res.json({ winner, confidence, totalClicks: rows.length, locked, variantA: { value: valueA }, variantB: { value: valueB } });
+});
+
+const voteSchema = z.object({
+  registrar: z.string().min(1),
+  score: z.union([z.literal(1), z.literal(-1)]),
+});
+
+router.post("/registrars/vote", optionalAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const { registrar, score } = voteSchema.parse(req.body);
+
+    if (!req.userId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    const existing = await prisma.registrarVote.findUnique({
+      where: { userId_registrar: { userId: req.userId, registrar } },
+    });
+
+    if (existing) {
+      if (existing.score === score) {
+        await prisma.registrarVote.delete({ where: { id: existing.id } });
+        return res.json({ vote: null });
+      }
+      const updated = await prisma.registrarVote.update({
+        where: { id: existing.id },
+        data: { score },
+      });
+      return res.json({ vote: { id: updated.id, score: updated.score } });
+    }
+
+    const vote = await prisma.registrarVote.create({
+      data: { userId: req.userId, registrar, score },
+    });
+
+    res.json({ vote: { id: vote.id, score: vote.score } });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: "Invalid request" });
+    }
+    throw error;
+  }
+});
+
+router.get("/registrars/votes", async (_req, res: Response) => {
+  try {
+    const votes = await prisma.registrarVote.findMany({
+      select: { registrar: true, score: true },
+    });
+
+    const agg: Record<string, { upvotes: number; downvotes: number; ratio: number }> = {};
+    for (const v of votes) {
+      if (!agg[v.registrar]) agg[v.registrar] = { upvotes: 0, downvotes: 0, ratio: 0 };
+      if (v.score === 1) agg[v.registrar].upvotes++;
+      else agg[v.registrar].downvotes++;
+    }
+
+    for (const r of Object.keys(agg)) {
+      const total = agg[r].upvotes + agg[r].downvotes;
+      agg[r].ratio = total > 0 ? Math.round((agg[r].upvotes / total) * 100) : 0;
+    }
+
+    res.json(agg);
+  } catch {
+    res.json({});
+  }
+});
+
+router.get("/registrars/personalized", optionalAuth, async (req: AuthRequest, res: Response) => {
+  const globalStats = await computeStats();
+  let personalStats: Record<string, { clicks: number; value: number }> = {};
+  let personalBest: string | null = null;
+
+  if (req.userId) {
+    personalStats = await computeStats(req.userId);
+    const sorted = Object.entries(personalStats).sort((a, b) => b[1].clicks - a[1].clicks);
+    if (sorted.length > 0) personalBest = sorted[0][0];
+  }
+
+  // Community votes per registrar
+  let voteRows: { registrar: string; score: number }[] = [];
+  try {
+    voteRows = await prisma.registrarVote.findMany({ select: { registrar: true, score: true } });
+  } catch { /* no votes */ }
+
+  const communityVotes: Record<string, { upvotes: number; downvotes: number }> = {};
+  for (const v of voteRows) {
+    if (!communityVotes[v.registrar]) communityVotes[v.registrar] = { upvotes: 0, downvotes: 0 };
+    if (v.score === 1) communityVotes[v.registrar].upvotes++;
+    else communityVotes[v.registrar].downvotes++;
+  }
+
+  res.json({ global: globalStats, personal: personalStats, personalBest, communityVotes });
 });
 
 export default router;
