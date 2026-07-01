@@ -5,6 +5,13 @@ import { optionalAuth, AuthRequest } from "../middleware/auth";
 
 const router = Router();
 
+const PAYOUT_RATES: Record<string, number> = {
+  GoDaddy: 0.8,
+  Dynadot: 0.5,
+  Spaceship: 0.2,
+  Porkbun: 0.4,
+};
+
 const clickSchema = z.object({
   domain: z.string().min(1),
   registrar: z.string().min(1),
@@ -61,10 +68,12 @@ router.get("/registrars/stats", async (_req, res: Response) => {
     return res.json({});
   }
 
-  const result: Record<string, number> = {};
+  const result: Record<string, { clicks: number; value: number }> = {};
   if (stats) {
     for (const s of stats) {
-      result[s.registrar] = s._count.registrar;
+      const clicks = s._count.registrar;
+      const payout = PAYOUT_RATES[s.registrar] ?? 0;
+      result[s.registrar] = { clicks, value: Math.round(clicks * payout * 100) / 100 };
     }
   }
 
