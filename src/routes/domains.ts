@@ -11,18 +11,43 @@ const router = Router();
 const PREMIUM_TLDS = new Set([".com", ".ai", ".io", ".app"]);
 const HIGH_VALUE_NICHES = ["ai", "health", "finance", "crypto", "data", "cloud", "pay", "trade", "meta", "tech", "bio", "med", "edu"];
 
-function computeTopOpportunity(domain: { name: string; tld: string; length: number; score: number; isBrandable: boolean; hasKeywords: boolean }, query?: string) {
+async function getTrendingKeywords(): Promise<Set<string>> {
+  try {
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const rows = await prisma.searchHistory.findMany({
+      where: { createdAt: { gte: twentyFourHoursAgo } },
+      select: { query: true },
+    });
+    const counts = new Map<string, number>();
+    for (const r of rows) {
+      const words = r.query.toLowerCase().split(/\s+/);
+      for (const w of words) {
+        if (w.length >= 2) counts.set(w, (counts.get(w) || 0) + 1);
+      }
+    }
+    const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
+    return new Set(sorted.map(([word]) => word));
+  } catch {
+    return new Set();
+  }
+}
+
+function computeTopOpportunity(
+  domain: { name: string; tld: string; length: number; score: number; isBrandable: boolean; hasKeywords: boolean },
+  query?: string,
+  trendingKeywords?: Set<string>,
+) {
   let boost = 0;
   const reasons: string[] = [];
   const badges: string[] = [];
 
   if (domain.length <= 6) {
     boost += 10;
-    reasons.push("short & memorable");
+    reasons.push(`short (${domain.length} chars)`);
     badges.push("💎 Rare");
   } else if (domain.length <= 8) {
     boost += 5;
-    reasons.push("concise name");
+    reasons.push(`concise (${domain.length} chars)`);
   }
 
   if (PREMIUM_TLDS.has(domain.tld)) {
@@ -43,7 +68,9 @@ function computeTopOpportunity(domain: { name: string; tld: string; length: numb
   if (domain.hasKeywords) {
     boost += 7;
     reasons.push("high-value keyword");
-    badges.push("🚀 High potential");
+    if (!badges.includes("🚀 High potential")) {
+      badges.push("🚀 High potential");
+    }
   }
 
   if (query) {
@@ -56,13 +83,56 @@ function computeTopOpportunity(domain: { name: string; tld: string; length: numb
     }
   }
 
+  // Trending keyword boost (from recent searches table)
+  if (trendingKeywords && trendingKeywords.size > 0) {
+    const domainLower = domain.name.toLowerCase();
+    for (const kw of trendingKeywords) {
+      if (domainLower.includes(kw) || (query && query.toLowerCase().includes(kw))) {
+        boost += 15;
+        if (!badges.includes("🔥 Trending")) badges.push("🔥 Trending");
+        if (reasons.length > 0 && !reasons[0].includes("trending")) {
+          reasons.unshift(`"${kw}" trending now`);
+        }
+        break;
+      }
+    }
+  }
+
   const totalScore = Math.min(100, Math.round(domain.score + boost));
 
-  const reason = reasons.length > 0
-    ? reasons.join(" + ").replace(/\b\w/g, (c) => c.toUpperCase())
-    : "Strong overall metrics";
+  // Build data-driven reason (structured for the UI)
+  const specificParts: string[] = [];
+  if (query) specificParts.push(`"${query}" keyword`);
+  if (domain.score >= 80) specificParts.push(`score ${domain.score}`);
+  if (domain.length <= 8) specificParts.push(`${domain.length} chars`);
+  specificParts.push(`${domain.tld} TLD`);
+  const specificReason = specificParts.join(" · ");
 
-  return { topOpportunityScore: totalScore, reason, badges };
+  // Build persuasive computedReason (reads like insight, not metadata)
+  let trendingWord: string | null = null;
+  if (trendingKeywords && trendingKeywords.size > 0) {
+    const domainLower = domain.name.toLowerCase();
+    for (const kw of trendingKeywords) {
+      if (domainLower.includes(kw) || (query && query.toLowerCase().includes(kw))) {
+        trendingWord = kw;
+        break;
+      }
+    }
+  }
+
+  const persuasiveParts: string[] = [];
+  if (trendingWord) persuasiveParts.push(`"${trendingWord}" is trending`);
+  if (domain.length <= 6) persuasiveParts.push(`short (${domain.length} chars)`);
+  else if (domain.length <= 10) persuasiveParts.push(`${domain.length} chars`);
+  if (PREMIUM_TLDS.has(domain.tld)) persuasiveParts.push(`premium ${domain.tld}`);
+  if (domain.isBrandable) persuasiveParts.push("brandable");
+  if (domain.hasKeywords) persuasiveParts.push("high-value keywords");
+
+  const computedReason = persuasiveParts.length > 0
+    ? persuasiveParts.join(" + ")
+    : `${domain.score} score · ${domain.length} chars · ${domain.tld}`;
+
+  return { topOpportunityScore: totalScore, reason: specificReason, badges, computedReason };
 }
 
 const searchSchema = z.object({
@@ -186,10 +256,11 @@ router.get("/search", optionalAuth, checkUsageLimit("search"), async (req: AuthR
     }));
 
     // Compute top opportunity
+    const trendingKeywords = await getTrendingKeywords();
     let topOpportunity = null;
     if (mapped.length > 0) {
       const scored = mapped.map((d) => {
-        const opp = computeTopOpportunity(d, q);
+        const opp = computeTopOpportunity(d, q, trendingKeywords);
         return { ...d, ...opp };
       });
       scored.sort((a, b) => b.topOpportunityScore - a.topOpportunityScore);
