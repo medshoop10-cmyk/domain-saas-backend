@@ -35,8 +35,8 @@ export async function createCheckoutSession(userId: string, plan: "pro" | "elite
     mode: "subscription",
     payment_method_types: ["card"],
     line_items: [{ price: priceId, quantity: 1 }],
-    success_url: `${process.env.CORS_ORIGIN || "http://localhost:3000"}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${process.env.CORS_ORIGIN || "http://localhost:3000"}/pricing`,
+    success_url: `${(process.env.CORS_ORIGIN || "http://localhost:3000").split(",")[0].trim()}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${(process.env.CORS_ORIGIN || "http://localhost:3000").split(",")[0].trim()}/pricing`,
     metadata: { userId, plan },
   });
 
@@ -290,7 +290,7 @@ export async function getSubscriptionPortal(userId: string) {
 
   const session = await stripe.billingPortal.sessions.create({
     customer: user.stripeCustomerId,
-    return_url: `${process.env.CORS_ORIGIN || "http://localhost:3000"}/dashboard/billing`,
+    return_url: `${(process.env.CORS_ORIGIN || "http://localhost:3000").split(",")[0].trim()}/dashboard/billing`,
   });
 
   return { url: session.url };

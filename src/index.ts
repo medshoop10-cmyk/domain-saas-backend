@@ -21,8 +21,11 @@ import { calculateTrending } from "./jobs/trendingCalculator";
 const app = express();
 const PORT = parseInt(process.env.PORT || "4000", 10);
 
+const CORS_ORIGIN = process.env.CORS_ORIGIN || "http://localhost:3000";
+const allowedOrigins = CORS_ORIGIN.split(",").map(s => s.trim());
+const FRONTEND_URL = allowedOrigins[0];
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || "http://localhost:3000",
+  origin: allowedOrigins,
   credentials: true,
 }));
 
