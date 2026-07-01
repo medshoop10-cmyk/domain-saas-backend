@@ -21,7 +21,13 @@ import { calculateTrending } from "./jobs/trendingCalculator";
 const app = express();
 const PORT = parseInt(process.env.PORT || "4000", 10);
 
-const CORS_ORIGIN = process.env.CORS_ORIGIN || "http://localhost:3000";
+const defaultOrigins = [
+  "http://localhost:3000",
+  "https://frontend-mu-seven-96.vercel.app",
+  "https://frontend-abmgsd5p6-medshoop10-cmyks-projects.vercel.app",
+  "https://frontend-f4b34pi1s-medshoop10-cmyks-projects.vercel.app",
+];
+const CORS_ORIGIN = process.env.CORS_ORIGIN || defaultOrigins.join(",");
 const allowedOrigins = CORS_ORIGIN.split(",").map(s => s.trim());
 const FRONTEND_URL = allowedOrigins[0];
 app.use(cors({
