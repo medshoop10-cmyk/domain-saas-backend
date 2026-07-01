@@ -47,6 +47,7 @@ model User {
   searchHistory SearchHistory[]
   subscriptions Subscription[]
   usage         Usage[]
+  clicks        Click[]
 }
 
 model Subscription {
@@ -83,6 +84,7 @@ model Domain {
 
   favorites      Favorite[]
   alerts         Alert[]
+  clicks         Click[]
   trendingDomain TrendingDomain?
 
   @@index([tld, score(sort: Desc)])
@@ -150,6 +152,21 @@ model Usage {
 
   @@unique([userId, date])
   @@index([userId, date])
+}
+
+model Click {
+  id        String   @id @default(uuid())
+  domainId  String
+  registrar String
+  userId    String?
+  createdAt DateTime @default(now())
+
+  domain Domain  @relation(fields: [domainId], references: [id], onDelete: Cascade)
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([domainId, createdAt(sort: Desc)])
+  @@index([registrar])
+  @@index([createdAt(sort: Desc)])
 }
 
 model TrendingDomain {
