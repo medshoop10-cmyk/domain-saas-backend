@@ -8,6 +8,63 @@ import { recordSearch } from "../services/trending";
 
 const router = Router();
 
+const PREMIUM_TLDS = new Set([".com", ".ai", ".io", ".app"]);
+const HIGH_VALUE_NICHES = ["ai", "health", "finance", "crypto", "data", "cloud", "pay", "trade", "meta", "tech", "bio", "med", "edu"];
+
+function computeTopOpportunity(domain: { name: string; tld: string; length: number; score: number; isBrandable: boolean; hasKeywords: boolean }, query?: string) {
+  let boost = 0;
+  const reasons: string[] = [];
+  const badges: string[] = [];
+
+  if (domain.length <= 6) {
+    boost += 10;
+    reasons.push("short & memorable");
+    badges.push("💎 Rare");
+  } else if (domain.length <= 8) {
+    boost += 5;
+    reasons.push("concise name");
+  }
+
+  if (PREMIUM_TLDS.has(domain.tld)) {
+    boost += 8;
+    if (domain.tld === ".ai" || domain.tld === ".io") {
+      badges.push("🔥 Trending");
+    }
+  }
+
+  if (domain.isBrandable) {
+    boost += 8;
+    reasons.push("highly brandable");
+    if (!badges.includes("💎 Rare") && !badges.includes("🔥 Trending")) {
+      badges.push("⭐ Premium pick");
+    }
+  }
+
+  if (domain.hasKeywords) {
+    boost += 7;
+    reasons.push("high-value keyword");
+    badges.push("🚀 High potential");
+  }
+
+  if (query) {
+    const q = query.toLowerCase();
+    for (const niche of HIGH_VALUE_NICHES) {
+      if (q.includes(niche) || domain.name.toLowerCase().includes(niche)) {
+        boost += 5;
+        break;
+      }
+    }
+  }
+
+  const totalScore = Math.min(100, Math.round(domain.score + boost));
+
+  const reason = reasons.length > 0
+    ? reasons.join(" + ").replace(/\b\w/g, (c) => c.toUpperCase())
+    : "Strong overall metrics";
+
+  return { topOpportunityScore: totalScore, reason, badges };
+}
+
 const searchSchema = z.object({
   q: z.string().optional(),
   tld: z.string().optional(),
@@ -123,11 +180,34 @@ router.get("/search", optionalAuth, checkUsageLimit("search"), async (req: AuthR
 
     const nextCursor = domains.length === limit ? domains[domains.length - 1].id : null;
 
+    const mapped = domains.map((d) => ({
+      ...d,
+      domain: d.name + d.tld,
+    }));
+
+    // Compute top opportunity
+    let topOpportunity = null;
+    if (mapped.length > 0) {
+      const scored = mapped.map((d) => {
+        const opp = computeTopOpportunity(d, q);
+        return { ...d, ...opp };
+      });
+      scored.sort((a, b) => b.topOpportunityScore - a.topOpportunityScore);
+      topOpportunity = {
+        id: scored[0].id,
+        domain: scored[0].domain,
+        name: scored[0].name,
+        tld: scored[0].tld,
+        score: scored[0].score,
+        topOpportunityScore: scored[0].topOpportunityScore,
+        reason: scored[0].reason,
+        badges: scored[0].badges,
+      };
+    }
+
     const result = {
-      domains: domains.map((d) => ({
-        ...d,
-        domain: d.name + d.tld,
-      })),
+      domains: mapped,
+      topOpportunity,
       total,
       page,
       limit,
