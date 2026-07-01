@@ -139,4 +139,40 @@ router.get("/registrars/variants", async (_req, res: Response) => {
   res.json(result);
 });
 
+router.get("/experiments/winner", async (_req, res: Response) => {
+  let rows;
+  try {
+    rows = await prisma.click.findMany({
+      where: { variant: { not: null } },
+      select: { registrar: true, variant: true },
+    });
+  } catch {
+    return res.json({ winner: null, confidence: 0, totalClicks: 0, locked: false });
+  }
+
+  if (rows.length === 0) {
+    return res.json({ winner: null, confidence: 0, totalClicks: 0, locked: false });
+  }
+
+  let valueA = 0, valueB = 0;
+  for (const r of rows) {
+    const payout = PAYOUT_RATES[r.registrar] ?? 0;
+    if (r.variant === "A") valueA += payout;
+    else if (r.variant === "B") valueB += payout;
+  }
+
+  valueA = Math.round(valueA * 100) / 100;
+  valueB = Math.round(valueB * 100) / 100;
+
+  const totalValue = valueA + valueB;
+  const confidence = totalValue > 0
+    ? Math.round((Math.abs(valueA - valueB) / totalValue) * 100) / 100
+    : 0;
+
+  const winner = valueA > valueB ? "A" : valueB > valueA ? "B" : null;
+  const locked = rows.length >= 10 && confidence > 0.25;
+
+  res.json({ winner, confidence, totalClicks: rows.length, locked, variantA: { value: valueA }, variantB: { value: valueB } });
+});
+
 export default router;
