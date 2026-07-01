@@ -12,6 +12,31 @@ const PAYOUT_RATES: Record<string, number> = {
   Porkbun: 0.4,
 };
 
+async function computeStats(userId?: string): Promise<Record<string, { clicks: number; value: number }>> {
+  const where = userId ? { userId } : undefined;
+  let stats;
+  try {
+    stats = await prisma.click.groupBy({
+      by: ["registrar"],
+      _count: { registrar: true },
+      where,
+      orderBy: { _count: { registrar: "desc" } },
+    });
+  } catch {
+    return {};
+  }
+
+  const result: Record<string, { clicks: number; value: number }> = {};
+  if (stats) {
+    for (const s of stats) {
+      const clicks = s._count.registrar;
+      const payout = PAYOUT_RATES[s.registrar] ?? 0;
+      result[s.registrar] = { clicks, value: Math.round(clicks * payout * 100) / 100 };
+    }
+  }
+  return result;
+}
+
 const clickSchema = z.object({
   domain: z.string().min(1),
   registrar: z.string().min(1),
@@ -57,27 +82,21 @@ router.post("/click", optionalAuth, async (req: AuthRequest, res: Response) => {
 });
 
 router.get("/registrars/stats", async (_req, res: Response) => {
-  let stats;
-  try {
-    stats = await prisma.click.groupBy({
-      by: ["registrar"],
-      _count: { registrar: true },
-      orderBy: { _count: { registrar: "desc" } },
-    });
-  } catch {
-    return res.json({});
-  }
-
-  const result: Record<string, { clicks: number; value: number }> = {};
-  if (stats) {
-    for (const s of stats) {
-      const clicks = s._count.registrar;
-      const payout = PAYOUT_RATES[s.registrar] ?? 0;
-      result[s.registrar] = { clicks, value: Math.round(clicks * payout * 100) / 100 };
-    }
-  }
-
+  const result = await computeStats();
   res.json(result);
+});
+
+router.get("/registrars/personalized", optionalAuth, async (req: AuthRequest, res: Response) => {
+  const [globalStats, personalStats] = await Promise.all([
+    computeStats(),
+    computeStats(req.userId),
+  ]);
+
+  const personalBest = Object.keys(personalStats).length > 0
+    ? Object.entries(personalStats).sort((a, b) => b[1].clicks - a[1].clicks)[0][0]
+    : null;
+
+  res.json({ global: globalStats, personal: personalStats, personalBest });
 });
 
 export default router;
