@@ -135,6 +135,78 @@ function computeTopOpportunity(
   return { topOpportunityScore: totalScore, reason: specificReason, badges, computedReason };
 }
 
+function computeScoreBreakdown(
+  domain: { name: string; tld: string; length: number; score: number; isBrandable: boolean; hasKeywords: boolean },
+  query?: string,
+  trendingKeywords?: Set<string>,
+) {
+  // Length score
+  let lengthScore = 0;
+  let lengthReason = "";
+  if (domain.length <= 4) { lengthScore = 100; lengthReason = "Extremely short"; }
+  else if (domain.length <= 6) { lengthScore = 90; lengthReason = "Short & memorable"; }
+  else if (domain.length <= 8) { lengthScore = 70; lengthReason = "Good length"; }
+  else if (domain.length <= 12) { lengthScore = 50; lengthReason = "Moderate length"; }
+  else { lengthScore = 30; lengthReason = "Long name"; }
+
+  // TLD score
+  let tldScore = 0;
+  let tldReason = "";
+  if (domain.tld === ".com") { tldScore = 100; tldReason = "Premium .com"; }
+  else if (domain.tld === ".ai") { tldScore = 95; tldReason = "Trending .ai TLD"; }
+  else if (domain.tld === ".io") { tldScore = 85; tldReason = "Popular .io TLD"; }
+  else if (domain.tld === ".app") { tldScore = 75; tldReason = "Solid .app TLD"; }
+  else { tldScore = 50; tldReason = `${domain.tld} TLD`; }
+
+  // Brandability score
+  const brandScore = domain.isBrandable ? 90 : 40;
+  const brandReason = domain.isBrandable ? "Highly brandable" : "Less brandable";
+
+  // Keyword value score
+  let keywordScore = 0;
+  let keywordReason = "";
+  if (domain.hasKeywords) {
+    keywordScore = 85;
+    keywordReason = "High-value keyword match";
+    if (query) {
+      for (const niche of HIGH_VALUE_NICHES) {
+        if (query.toLowerCase().includes(niche) || domain.name.toLowerCase().includes(niche)) {
+          keywordScore = 100;
+          keywordReason = `"${niche}" niche match`;
+          break;
+        }
+      }
+    }
+  } else {
+    keywordScore = 30;
+    keywordReason = "No keyword match";
+  }
+
+  // Trending signal
+  let trendScore = 0;
+  let trendReason = "No trending signal";
+  if (trendingKeywords && trendingKeywords.size > 0) {
+    const domainLower = domain.name.toLowerCase();
+    for (const kw of trendingKeywords) {
+      if (domainLower.includes(kw) || (query && query.toLowerCase().includes(kw))) {
+        trendScore = 95;
+        trendReason = `"${kw}" trending now`;
+        break;
+      }
+    }
+  }
+
+  const breakdown = [
+    { label: "Length", score: lengthScore, reason: lengthReason },
+    { label: "TLD", score: tldScore, reason: tldReason },
+    { label: "Brandability", score: brandScore, reason: brandReason },
+    { label: "Keyword value", score: keywordScore, reason: keywordReason },
+    { label: "Trending signal", score: trendScore, reason: trendReason },
+  ];
+
+  return { breakdown };
+}
+
 const searchSchema = z.object({
   q: z.string().optional(),
   tld: z.string().optional(),
@@ -248,15 +320,14 @@ router.get("/search", optionalAuth, checkUsageLimit("search"), async (req: AuthR
       ]);
     }
 
+    const trendingKeywords = await getTrendingKeywords();
     const nextCursor = domains.length === limit ? domains[domains.length - 1].id : null;
 
     const mapped = domains.map((d) => ({
       ...d,
       domain: d.name + d.tld,
+      breakdown: computeScoreBreakdown(d, q, trendingKeywords).breakdown,
     }));
-
-    // Compute top opportunity
-    const trendingKeywords = await getTrendingKeywords();
     let topOpportunity = null;
     if (mapped.length > 0) {
       const scored = mapped.map((d) => {
@@ -274,6 +345,7 @@ router.get("/search", optionalAuth, checkUsageLimit("search"), async (req: AuthR
         reason: scored[0].reason,
         computedReason: scored[0].computedReason,
         badges: scored[0].badges,
+        breakdown: scored[0].breakdown,
       };
     }
 
