@@ -8,11 +8,12 @@ const router = Router();
 const clickSchema = z.object({
   domain: z.string().min(1),
   registrar: z.string().min(1),
+  position: z.enum(["top_card", "list_card"]).optional(),
 });
 
 router.post("/click", optionalAuth, async (req: AuthRequest, res: Response) => {
   try {
-    const { domain, registrar } = clickSchema.parse(req.body);
+    const { domain, registrar, position } = clickSchema.parse(req.body);
 
     const dotIndex = domain.indexOf(".");
     if (dotIndex === -1) {
@@ -34,6 +35,7 @@ router.post("/click", optionalAuth, async (req: AuthRequest, res: Response) => {
       data: {
         domainId: domainRecord.id,
         registrar,
+        position: position ?? null,
         userId: req.userId ?? null,
       },
     });
@@ -43,6 +45,25 @@ router.post("/click", optionalAuth, async (req: AuthRequest, res: Response) => {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: "Invalid request" });
     }
+    throw error;
+  }
+});
+
+router.get("/registrars/stats", async (_req, res: Response) => {
+  try {
+    const stats = await prisma.click.groupBy({
+      by: ["registrar"],
+      _count: { registrar: true },
+      orderBy: { _count: { registrar: "desc" } },
+    });
+
+    const result: Record<string, number> = {};
+    for (const s of stats) {
+      result[s.registrar] = s._count.registrar;
+    }
+
+    res.json(result);
+  } catch (error) {
     throw error;
   }
 });
