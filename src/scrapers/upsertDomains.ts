@@ -26,6 +26,8 @@ export async function upsertScrapedDomains(
             bucket: d.bucket,
             velocityScore: d.velocityScore,
             confidenceScore: d.confidenceScore,
+            liquidityScore: d.liquidityScore,
+            domainType: d.domainType,
             ...(d.price !== undefined ? { price: d.price } : {}),
             ...(d.traffic !== undefined ? { traffic: d.traffic } : {}),
           },
@@ -44,6 +46,8 @@ export async function upsertScrapedDomains(
             bucket: d.bucket,
             velocityScore: d.velocityScore,
             confidenceScore: d.confidenceScore,
+            liquidityScore: d.liquidityScore,
+            domainType: d.domainType,
           },
         })
       )

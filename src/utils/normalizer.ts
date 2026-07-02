@@ -8,6 +8,8 @@ export interface RawDomain {
   metadata?: Record<string, string>;
 }
 
+export type DomainType = "generated" | "market";
+
 export interface ScrapedDomain {
   name: string;
   tld: string;
@@ -20,6 +22,7 @@ export interface ScrapedDomain {
   isBrandable: boolean;
   hasKeywords: boolean;
   score: number;
+  domainType: DomainType;
 }
 
 const BRANDABLE_PATTERNS = [
@@ -65,6 +68,8 @@ export function normalizeDomain(raw: RawDomain): ScrapedDomain {
   const domainName = dotIndex > 0 ? name.substring(0, dotIndex) : name;
   const tld = dotIndex > 0 ? name.substring(dotIndex) : `.${name}`;
 
+  const isMarket = raw.source !== "wordlist" && (!!raw.price || (raw.traffic ?? 0) > 0 || (raw.backlinks ?? 0) > 0);
+
   return {
     name,
     tld,
@@ -83,5 +88,6 @@ export function normalizeDomain(raw: RawDomain): ScrapedDomain {
       hasKeywords: hasKeywords(domainName),
       backlinks: raw.backlinks ?? 0,
     }),
+    domainType: isMarket ? "market" : "generated",
   };
 }

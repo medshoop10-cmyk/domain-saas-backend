@@ -1,32 +1,49 @@
 import prisma from "../config/database";
 
 async function backfill() {
-  const r = await prisma.$executeRawUnsafe(`
+  await prisma.$executeRawUnsafe(`
     UPDATE "Domain"
     SET
-      "velocityScore" = GREATEST(0,
-        COALESCE("traffic", 0) * 0.6 + COALESCE("backlinks", 0) * 0.4
-      ),
-      "googleResults" = 0,
-      "bucket" = CASE
-        WHEN COALESCE("traffic", 0) > 50 OR "backlinks" > 30 THEN 'trending'
-        WHEN "isBrandable" = true AND "length" <= 12 AND "name" NOT LIKE '%-%' AND "name" ~ '^[a-zA-Z]+$' AND "score" >= 70 THEN 'brandable'
-        WHEN "price" IS NOT NULL AND "price" < 300 AND "score" >= 10 THEN 'undervalued'
-        ELSE 'standard'
-      END
+      "domainType" = CASE
+        WHEN "source" = 'wordlist' AND "price" IS NULL AND COALESCE("traffic", 0) = 0 AND "backlinks" = 0 THEN 'generated'
+        ELSE 'market'
+      END,
+      "liquidityScore" = COALESCE(
+        CASE WHEN "price" IS NOT NULL THEN 5 ELSE 0 END +
+        CASE WHEN COALESCE("traffic", 0) > 0 THEN 3 ELSE 0 END +
+        CASE WHEN "backlinks" > 0 THEN 2 ELSE 0 END,
+      0),
+      "bucket" = 'standard',
+      "confidenceScore" = 0,
+      "velocityScore" = 0,
+      "opportunityScore" = 0
   `);
-  console.log(`Updated ${r} rows`);
 
   await prisma.$executeRawUnsafe(`
     UPDATE "Domain"
     SET
-      "opportunityScore" = LEAST(100, "score" + 3),
-      "confidenceScore" = GREATEST(0, LEAST(100, "score" * 0.6 + "opportunityScore" * 0.4))
+      "bucket" = CASE
+        WHEN "domainType" = 'generated' AND "isBrandable" = true AND "length" <= 12 AND "name" NOT LIKE '%-%' AND "name" ~ '^[a-zA-Z]+$' AND "score" >= 70 THEN 'brandable'
+        WHEN "domainType" = 'market' AND "liquidityScore" >= 5 AND (COALESCE("traffic", 0) > 50 OR "backlinks" > 30) THEN 'trending'
+        WHEN "domainType" = 'market' AND "liquidityScore" >= 5 AND "price" IS NOT NULL AND "price" < 300 AND "score" >= 10 THEN 'undervalued'
+        ELSE 'standard'
+      END,
+      "opportunityScore" = LEAST(100, score + 3),
+      "velocityScore" = GREATEST(0, COALESCE("traffic", 0) * 0.6 + "backlinks" * 0.4),
+      "confidenceScore" = CASE
+        WHEN "domainType" = 'generated' THEN ROUND((score * 0.6 + LEAST(100, score + 3) * 0.4) * 0.5)
+        ELSE ROUND(score * 0.6 + LEAST(100, score + 3) * 0.4)
+      END
   `);
-  console.log("Confidence scores backfilled");
 
-  const dist = await prisma.domain.groupBy({ by: ["bucket"], _count: true });
-  console.log("Bucket distribution:", JSON.stringify(dist));
+  const buckets = await prisma.$queryRawUnsafe<Array<{ bucket: string; count: bigint }>>(
+    `SELECT bucket, COUNT(*)::int as count FROM "Domain" GROUP BY bucket`
+  );
+  const types = await prisma.$queryRawUnsafe<Array<{ domainType: string; count: bigint }>>(
+    `SELECT "domainType", COUNT(*)::int as count FROM "Domain" GROUP BY "domainType"`
+  );
+  console.log("Buckets:", JSON.stringify(buckets));
+  console.log("Types:", JSON.stringify(types));
 
   await prisma.$disconnect();
 }

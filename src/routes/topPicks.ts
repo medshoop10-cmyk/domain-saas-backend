@@ -10,20 +10,16 @@ const SELECT = {
   backlinks: true, source: true, price: true, traffic: true,
   opportunityScore: true, bucket: true,
   velocityScore: true, confidenceScore: true,
+  liquidityScore: true, domainType: true,
 } as const;
-
-const BASE: any = {};
 
 router.get("/", optionalAuth, async (_req: AuthRequest, res: Response) => {
   try {
     const [trending, brandable, undervalued, total] = await Promise.all([
       prisma.domain.findMany({
         where: {
-          OR: [
-            { bucket: "trending" },
-            { traffic: { gt: 50 }, bucket: "standard" },
-            { backlinks: { gt: 30 }, bucket: "standard" },
-          ],
+          domainType: "market",
+          bucket: "trending",
         },
         orderBy: [
           { confidenceScore: "desc" },
@@ -36,17 +32,8 @@ router.get("/", optionalAuth, async (_req: AuthRequest, res: Response) => {
       }),
       prisma.domain.findMany({
         where: {
-          OR: [
-            { bucket: "brandable" },
-            {
-              isBrandable: true,
-              length: { lte: 12 },
-              score: { gte: 70 },
-              bucket: "standard",
-            },
-          ],
-          isBrandable: true,
-          length: { lte: 12 },
+          domainType: "generated",
+          bucket: "brandable",
         },
         orderBy: [
           { confidenceScore: "desc" },
@@ -58,16 +45,8 @@ router.get("/", optionalAuth, async (_req: AuthRequest, res: Response) => {
       }),
       prisma.domain.findMany({
         where: {
-          OR: [
-            { bucket: "undervalued" },
-            {
-              price: { not: null, lte: 300 },
-              score: { gte: 10 },
-              bucket: "standard",
-            },
-          ],
-          price: { not: null, lte: 300 },
-          NOT: { price: null },
+          domainType: "market",
+          bucket: "undervalued",
         },
         orderBy: [
           { confidenceScore: "desc" },

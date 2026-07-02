@@ -11,6 +11,26 @@ const router = Router();
 
 const PREMIUM_TLDS = new Set([".com", ".ai", ".io", ".app"]);
 const HIGH_VALUE_NICHES = ["ai", "health", "finance", "crypto", "data", "cloud", "pay", "trade", "meta", "tech", "bio", "med", "edu"];
+const REASON_WORDS = ["ai", "tech", "cloud", "data", "app", "hub", "lab", "pay", "flow", "base", "stack", "peak", "nexus", "core", "prime", "pulse"];
+
+function computeReasonsForDomain(d: { name: string; tld: string; length: number; score: number; isBrandable: boolean; price?: number | null; traffic?: number | null; backlinks: number; source: string; domainType?: string | null; liquidityScore?: number | null }): string[] {
+  const base = d.name.replace(/\..*$/, "").toLowerCase();
+  const r: string[] = [];
+  if (base.length <= 8) r.push("Short & pronounceable");
+  if (base.length >= 4 && base.length <= 10 && !base.includes("-") && !/\d/.test(base)) r.push("Startup-friendly name");
+  if (REASON_WORDS.some((w) => base.includes(w))) r.push("Contains premium keyword");
+  if (d.tld === ".com") r.push("Premium .com TLD");
+  if (d.tld === ".ai" || d.tld === ".io") r.push("Trending TLD");
+  if (d.isBrandable) r.push("High brandability");
+  if (d.domainType === "market") r.push("Real market signals");
+  if (d.liquidityScore && d.liquidityScore >= 5) r.push("Has market activity");
+  if (d.price !== undefined && d.price !== null && d.price < 300) r.push("Low price vs quality");
+  if (d.traffic && d.traffic > 100) r.push("Has existing traffic");
+  if (d.backlinks > 50) r.push("Established backlink profile");
+  if (d.source === "godaddy") r.push("Available on GoDaddy Auctions");
+  if (d.source === "namecheap") r.push("Listed on Namecheap Marketplace");
+  return r.slice(0, 3);
+}
 
 async function getTrendingKeywords(): Promise<Set<string>> {
   try {
@@ -320,6 +340,7 @@ router.get("/search", optionalAuth, checkUsageLimit("search"), async (req: AuthR
               id: true, name: true, tld: true, length: true,
               score: true, isBrandable: true, hasKeywords: true,
               backlinks: true, source: true, price: true, traffic: true,
+              domainType: true, liquidityScore: true,
               createdAt: true,
             },
           }),
@@ -336,6 +357,7 @@ router.get("/search", optionalAuth, checkUsageLimit("search"), async (req: AuthR
               id: true, name: true, tld: true, length: true,
               score: true, isBrandable: true, hasKeywords: true,
               backlinks: true, source: true, price: true, traffic: true,
+              domainType: true, liquidityScore: true,
               createdAt: true,
             },
           }),
@@ -366,6 +388,7 @@ router.get("/search", optionalAuth, checkUsageLimit("search"), async (req: AuthR
     const mapped = domains.map((d) => ({
       ...d,
       domain: d.name + d.tld,
+      reasons: computeReasonsForDomain(d),
       breakdown: computeScoreBreakdown(d, q, trendingKeywords).breakdown,
     }));
     let topOpportunity = null;
@@ -464,6 +487,7 @@ router.get("/:id", async (req, res: Response) => {
       id: true, name: true, tld: true, length: true,
       score: true, isBrandable: true, hasKeywords: true,
       backlinks: true, source: true, price: true, traffic: true,
+      domainType: true, liquidityScore: true,
       createdAt: true,
     },
   });
