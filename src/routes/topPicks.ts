@@ -15,20 +15,39 @@ router.get("/", optionalAuth, async (_req: AuthRequest, res: Response) => {
   try {
     const [trending, brandable, undervalued, total] = await Promise.all([
       prisma.domain.findMany({
-        where: { bucket: "trending", backlinks: { gte: 50 } },
-        orderBy: { opportunityScore: "desc" },
+        where: {
+          OR: [
+            { bucket: "trending" },
+            { backlinks: { gte: 50 }, score: { gte: 50 }, bucket: "standard" },
+          ],
+          backlinks: { gte: 50 },
+        },
+        orderBy: [{ opportunityScore: "desc" }, { backlinks: "desc" }, { score: "desc" }],
         take: 20,
         select: SELECT,
       }),
       prisma.domain.findMany({
-        where: { bucket: "brandable", length: { lte: 12 } },
-        orderBy: { opportunityScore: "desc" },
+        where: {
+          OR: [
+            { bucket: "brandable" },
+            { isBrandable: true, length: { lte: 12 }, bucket: "standard" },
+          ],
+          isBrandable: true, length: { lte: 12 },
+        },
+        orderBy: [{ opportunityScore: "desc" }, { score: "desc" }],
         take: 20,
         select: SELECT,
       }),
       prisma.domain.findMany({
-        where: { bucket: "undervalued", price: { not: null, lte: 200 } },
-        orderBy: [{ opportunityScore: "desc" }, { price: "asc" }],
+        where: {
+          OR: [
+            { bucket: "undervalued" },
+            { price: { not: null, lte: 200 }, score: { gte: 50 }, bucket: "standard" },
+          ],
+          price: { not: null, lte: 200 },
+          NOT: { price: null },
+        },
+        orderBy: [{ opportunityScore: "desc" }, { score: "desc" }, { price: "asc" }],
         take: 20,
         select: SELECT,
       }),
