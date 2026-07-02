@@ -119,9 +119,10 @@ function computeEstimatedResale(d: any): number {
 
 router.get("/", optionalAuth, async (req: AuthRequest, res: Response) => {
   try {
-    const rawLimit = req.query.limit !== undefined ? parseInt(req.query.limit as string) : 30;
-    const limit = Math.min(Math.max(1, rawLimit), 100);
-    const page = Math.max(0, parseInt(req.query.page as string) || 0);
+    const rawLimit = parseInt(req.query.limit as string);
+    const limit = Math.min(Math.max(1, isNaN(rawLimit) ? 30 : rawLimit), 100);
+    const rawPage = parseInt(req.query.page as string);
+    const page = Math.max(0, isNaN(rawPage) ? 0 : rawPage);
     const skip = page * limit;
 
     const marketCount = await prisma.domain.count({ where: { domainType: "market" } });
