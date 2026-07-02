@@ -1,25 +1,29 @@
 import prisma from "../config/database";
 
 async function backfill() {
-  const result = await prisma.$executeRawUnsafe(`
+  const r = await prisma.$executeRawUnsafe(`
     UPDATE "Domain"
     SET
-      "opportunityScore" = GREATEST(0, LEAST(100,
-        score +
-        CASE WHEN length <= 10 THEN 3 ELSE 0 END +
-        CASE WHEN position('-' in name) = 0 THEN 2 ELSE 0 END +
-        CASE WHEN name ~ '[0-9]' = false THEN 2 ELSE 0 END +
-        CASE WHEN "isBrandable" = true THEN 3 ELSE 0 END
-      )),
+      "velocityScore" = GREATEST(0,
+        COALESCE("traffic", 0) * 0.6 + COALESCE("backlinks", 0) * 0.4
+      ),
+      "googleResults" = 0,
       "bucket" = CASE
-        WHEN "isBrandable" = true AND length <= 12 AND position('-' in name) = 0 THEN 'brandable'
-        WHEN price IS NOT NULL AND price <= 200 AND score >= 50 THEN 'undervalued'
-        WHEN backlinks >= 50 THEN 'trending'
+        WHEN COALESCE("traffic", 0) > 50 OR "backlinks" > 30 THEN 'trending'
+        WHEN "isBrandable" = true AND "length" <= 12 AND "name" NOT LIKE '%-%' AND "name" ~ '^[a-zA-Z]+$' AND "score" >= 70 THEN 'brandable'
+        WHEN "price" IS NOT NULL AND "price" < 300 AND "score" >= 10 THEN 'undervalued'
         ELSE 'standard'
       END
   `);
+  console.log(`Updated ${r} rows`);
 
-  console.log(`Updated ${result} rows`);
+  await prisma.$executeRawUnsafe(`
+    UPDATE "Domain"
+    SET
+      "opportunityScore" = LEAST(100, "score" + 3),
+      "confidenceScore" = GREATEST(0, LEAST(100, "score" * 0.6 + "opportunityScore" * 0.4))
+  `);
+  console.log("Confidence scores backfilled");
 
   const dist = await prisma.domain.groupBy({ by: ["bucket"], _count: true });
   console.log("Bucket distribution:", JSON.stringify(dist));

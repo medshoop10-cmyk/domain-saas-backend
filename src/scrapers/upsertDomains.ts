@@ -16,7 +16,7 @@ export async function upsertScrapedDomains(
       batch.map((d) =>
         prisma.domain.upsert({
           where: { name: d.name },
-          update: {
+            update: {
             score: d.score,
             isBrandable: d.isBrandable,
             hasKeywords: d.hasKeywords,
@@ -24,6 +24,8 @@ export async function upsertScrapedDomains(
             source: d.source,
             opportunityScore: d.opportunityScore,
             bucket: d.bucket,
+            velocityScore: d.velocityScore,
+            confidenceScore: d.confidenceScore,
             ...(d.price !== undefined ? { price: d.price } : {}),
             ...(d.traffic !== undefined ? { traffic: d.traffic } : {}),
           },
@@ -40,6 +42,8 @@ export async function upsertScrapedDomains(
             traffic: d.traffic,
             opportunityScore: d.opportunityScore,
             bucket: d.bucket,
+            velocityScore: d.velocityScore,
+            confidenceScore: d.confidenceScore,
           },
         })
       )

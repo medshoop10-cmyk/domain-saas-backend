@@ -9,7 +9,10 @@ const SELECT = {
   score: true, isBrandable: true, hasKeywords: true,
   backlinks: true, source: true, price: true, traffic: true,
   opportunityScore: true, bucket: true,
+  velocityScore: true, confidenceScore: true,
 } as const;
+
+const BASE: any = {};
 
 router.get("/", optionalAuth, async (_req: AuthRequest, res: Response) => {
   try {
@@ -18,11 +21,16 @@ router.get("/", optionalAuth, async (_req: AuthRequest, res: Response) => {
         where: {
           OR: [
             { bucket: "trending" },
-            { backlinks: { gte: 50 }, score: { gte: 50 }, bucket: "standard" },
+            { traffic: { gt: 50 }, bucket: "standard" },
+            { backlinks: { gt: 30 }, bucket: "standard" },
           ],
-          backlinks: { gte: 50 },
         },
-        orderBy: [{ opportunityScore: "desc" }, { backlinks: "desc" }, { score: "desc" }],
+        orderBy: [
+          { confidenceScore: "desc" },
+          { velocityScore: "desc" },
+          { opportunityScore: "desc" },
+          { score: "desc" },
+        ],
         take: 20,
         select: SELECT,
       }),
@@ -30,11 +38,21 @@ router.get("/", optionalAuth, async (_req: AuthRequest, res: Response) => {
         where: {
           OR: [
             { bucket: "brandable" },
-            { isBrandable: true, length: { lte: 12 }, bucket: "standard" },
+            {
+              isBrandable: true,
+              length: { lte: 12 },
+              score: { gte: 70 },
+              bucket: "standard",
+            },
           ],
-          isBrandable: true, length: { lte: 12 },
+          isBrandable: true,
+          length: { lte: 12 },
         },
-        orderBy: [{ opportunityScore: "desc" }, { score: "desc" }],
+        orderBy: [
+          { confidenceScore: "desc" },
+          { opportunityScore: "desc" },
+          { score: "desc" },
+        ],
         take: 20,
         select: SELECT,
       }),
@@ -42,12 +60,21 @@ router.get("/", optionalAuth, async (_req: AuthRequest, res: Response) => {
         where: {
           OR: [
             { bucket: "undervalued" },
-            { price: { not: null, lte: 200 }, score: { gte: 50 }, bucket: "standard" },
+            {
+              price: { not: null, lte: 300 },
+              score: { gte: 10 },
+              bucket: "standard",
+            },
           ],
-          price: { not: null, lte: 200 },
+          price: { not: null, lte: 300 },
           NOT: { price: null },
         },
-        orderBy: [{ opportunityScore: "desc" }, { score: "desc" }, { price: "asc" }],
+        orderBy: [
+          { confidenceScore: "desc" },
+          { opportunityScore: "desc" },
+          { score: "desc" },
+          { price: "asc" },
+        ],
         take: 20,
         select: SELECT,
       }),
