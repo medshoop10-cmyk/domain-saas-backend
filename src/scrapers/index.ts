@@ -12,12 +12,27 @@ export interface ScrapeResults {
   total: number;
 }
 
-export async function scrapeAllSources(): Promise<ScrapeResults> {
-  const [godaddy, expiredDomains, namecheap] = await Promise.allSettled([
-    scrapeGoDaddy(),
-    scrapeExpiredDomains(),
-    scrapeNamecheap(),
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+    ),
   ]);
+}
+
+export async function scrapeAllSources(): Promise<ScrapeResults> {
+  const TIMEOUT = 25000;
+
+  const [godaddy, expiredDomains, namecheap] = await Promise.allSettled([
+    withTimeout(scrapeGoDaddy(), TIMEOUT, "GoDaddy"),
+    withTimeout(scrapeExpiredDomains(), TIMEOUT, "ExpiredDomains"),
+    withTimeout(scrapeNamecheap(), TIMEOUT, "Namecheap"),
+  ]);
+
+  if (godaddy.status === "rejected") console.warn("[Scraper] GoDaddy failed:", godaddy.reason);
+  if (expiredDomains.status === "rejected") console.warn("[Scraper] ExpiredDomains failed:", expiredDomains.reason);
+  if (namecheap.status === "rejected") console.warn("[Scraper] Namecheap failed:", namecheap.reason);
 
   return {
     godaddy: godaddy.status === "fulfilled" ? godaddy.value : [],

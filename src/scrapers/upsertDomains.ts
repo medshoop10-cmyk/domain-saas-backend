@@ -1,9 +1,11 @@
 import prisma from "../config/database";
+import { filterAndScore } from "./filterDomains";
 import type { ScrapedDomain } from "../utils/normalizer";
 
 export async function upsertScrapedDomains(
-  domains: ScrapedDomain[]
-): Promise<{ inserted: number; updated: number }> {
+  rawDomains: ScrapedDomain[]
+): Promise<{ inserted: number; updated: number; filtered: number }> {
+  const domains = filterAndScore(rawDomains);
   let inserted = 0;
   let updated = 0;
 
@@ -20,6 +22,8 @@ export async function upsertScrapedDomains(
             hasKeywords: d.hasKeywords,
             backlinks: Math.max(d.backlinks, 0),
             source: d.source,
+            opportunityScore: d.opportunityScore,
+            bucket: d.bucket,
             ...(d.price !== undefined ? { price: d.price } : {}),
             ...(d.traffic !== undefined ? { traffic: d.traffic } : {}),
           },
@@ -34,6 +38,8 @@ export async function upsertScrapedDomains(
             source: d.source,
             price: d.price,
             traffic: d.traffic,
+            opportunityScore: d.opportunityScore,
+            bucket: d.bucket,
           },
         })
       )
@@ -46,5 +52,5 @@ export async function upsertScrapedDomains(
     }
   }
 
-  return { inserted, updated };
+  return { inserted, updated, filtered: domains.length };
 }

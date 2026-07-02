@@ -238,10 +238,11 @@ router.post("/ingest", requireAuth, async (req: AuthRequest, res: Response) => {
         ...scraped.namecheap,
       ]);
       return res.json({
-        message: `Scraped ${scraped.total} domains (${result.inserted} new, ${result.updated} updated)`,
+        message: `Scraped ${scraped.total} raw, ${result.filtered} passed SaaS fit filter (${result.inserted} new, ${result.updated} updated)`,
         sources: { godaddy: scraped.godaddy.length, expiredDomains: scraped.expiredDomains.length, namecheap: scraped.namecheap.length },
         inserted: result.inserted,
         updated: result.updated,
+        filtered: result.filtered,
       });
     }
 

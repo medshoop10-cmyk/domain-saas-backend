@@ -1,7 +1,7 @@
 import { scrapeAllSources } from "../scrapers";
 import { upsertScrapedDomains } from "../scrapers/upsertDomains";
 
-export async function runDailyScrape(): Promise<{ total: number; inserted: number; updated: number }> {
+export async function runDailyScrape(): Promise<{ total: number; inserted: number; updated: number; filtered: number }> {
   console.log("[DailyScrape] Starting Playwright pipeline...");
   const scraped = await scrapeAllSources();
   console.log(`[DailyScrape] Scraped ${scraped.total} total:`, {
@@ -14,6 +14,6 @@ export async function runDailyScrape(): Promise<{ total: number; inserted: numbe
     ...scraped.expiredDomains,
     ...scraped.namecheap,
   ]);
-  console.log(`[DailyScrape] DB result: ${result.inserted} new, ${result.updated} updated`);
+  console.log(`[DailyScrape] DB result: ${result.inserted} new, ${result.updated} updated (${result.filtered} passed SaaS fit filter)`);
   return { total: scraped.total, ...result };
 }
