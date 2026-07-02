@@ -225,7 +225,26 @@ const searchSchema = z.object({
 
 router.post("/ingest", requireAuth, async (req: AuthRequest, res: Response) => {
   try {
+    const usePlaywright = req.body.playwright === true;
     const count = Math.min(parseInt(req.body.count as string) || 500, 5000);
+
+    if (usePlaywright) {
+      const { scrapeAllSources } = await import("../scrapers");
+      const { upsertScrapedDomains } = await import("../scrapers/upsertDomains");
+      const scraped = await scrapeAllSources();
+      const result = await upsertScrapedDomains([
+        ...scraped.godaddy,
+        ...scraped.expiredDomains,
+        ...scraped.namecheap,
+      ]);
+      return res.json({
+        message: `Scraped ${scraped.total} domains (${result.inserted} new, ${result.updated} updated)`,
+        sources: { godaddy: scraped.godaddy.length, expiredDomains: scraped.expiredDomains.length, namecheap: scraped.namecheap.length },
+        inserted: result.inserted,
+        updated: result.updated,
+      });
+    }
+
     const mod = await import("../jobs/domainIngestion");
     const result = await mod.ingestDomains(count);
     res.json({ message: `Ingested ${result.generator + result.scraper} domains (${result.scored} scored)`, ...result });
@@ -299,7 +318,8 @@ router.get("/search", optionalAuth, checkUsageLimit("search"), async (req: AuthR
             select: {
               id: true, name: true, tld: true, length: true,
               score: true, isBrandable: true, hasKeywords: true,
-              backlinks: true, createdAt: true,
+              backlinks: true, source: true, price: true, traffic: true,
+              createdAt: true,
             },
           }),
           prisma.domain.count({ where }),
@@ -314,7 +334,8 @@ router.get("/search", optionalAuth, checkUsageLimit("search"), async (req: AuthR
             select: {
               id: true, name: true, tld: true, length: true,
               score: true, isBrandable: true, hasKeywords: true,
-              backlinks: true, createdAt: true,
+              backlinks: true, source: true, price: true, traffic: true,
+              createdAt: true,
             },
           }),
           prisma.domain.count({ where }),
@@ -330,7 +351,8 @@ router.get("/search", optionalAuth, checkUsageLimit("search"), async (req: AuthR
           select: {
             id: true, name: true, tld: true, length: true,
             score: true, isBrandable: true, hasKeywords: true,
-            backlinks: true, createdAt: true,
+            backlinks: true, source: true, price: true, traffic: true,
+            createdAt: true,
           },
         }),
         prisma.domain.count({ where }),
@@ -440,7 +462,8 @@ router.get("/:id", async (req, res: Response) => {
     select: {
       id: true, name: true, tld: true, length: true,
       score: true, isBrandable: true, hasKeywords: true,
-      backlinks: true, createdAt: true,
+      backlinks: true, source: true, price: true, traffic: true,
+      createdAt: true,
     },
   });
 

@@ -81,6 +81,11 @@ model Domain {
   isBrandable Boolean  @default(false)
   hasKeywords Boolean  @default(false)
   backlinks   Int      @default(0)
+  source      String   @default("wordlist")
+  price       Float?
+  traffic     Int?
+  expiryDate  DateTime?
+  keywords    String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
