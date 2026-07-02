@@ -19,6 +19,7 @@ import searchRoutes from "./routes/searches";
 import eventRoutes from "./routes/events";
 import feedbackRoutes from "./routes/feedback";
 import topPicksRoutes from "./routes/topPicks";
+import feedRoutes from "./routes/feed";
 import { scoreUnscoredDomains } from "./jobs/domainScorer";
 import { calculateTrending } from "./jobs/trendingCalculator";
 
@@ -60,6 +61,7 @@ app.use("/api/searches", searchRoutes);
 app.use("/api/events", eventRoutes);
 app.use("/api/feedback", feedbackRoutes);
 app.use("/api/top-picks", topPicksRoutes);
+app.use("/api/feed", feedRoutes);
 
 // Health check
 app.get("/api/health", (_req, res) => {

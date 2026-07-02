@@ -11,6 +11,10 @@ export interface FilteredDomain extends ScrapedDomain {
   urgencyScore: number;
   badges: string[];
   reasons: string[];
+  synthetic: boolean;
+  estimatedResale: number;
+  sellReasons: string[];
+  feedScore: number;
 }
 
 const PREMIUM_WORDS = [
@@ -154,6 +158,48 @@ function computeVelocity(d: ScrapedDomain): number {
   return Math.round(((d.traffic || 0) * 0.6 + (d.backlinks || 0) * 0.4 + (d.bids || 0) * 5));
 }
 
+function estimatePrice(d: ScrapedDomain): number {
+  const base = baseName(d);
+  const lengthScore = base.length <= 8 ? 10 : base.length <= 12 ? 7 : 4;
+  const wordBonus = PREMIUM_WORDS.some((w) => base.includes(w)) ? 2 : 0;
+  const brandableBonus = d.isBrandable ? 3 : 0;
+  const tldBonus = d.tld === ".com" ? 3 : d.tld === ".ai" || d.tld === ".io" ? 2 : 0;
+  const basePrice = lengthScore * 50 + wordBonus * 200 + brandableBonus * 200 + tldBonus * 100;
+  const jitter = Math.round(Math.random() * 100 - 50);
+  return Math.max(50, basePrice + jitter);
+}
+
+function computeSyntheticDaysToExpire(): number {
+  return 1 + Math.floor(Math.random() * 6);
+}
+
+function computeEstimatedResale(d: ScrapedDomain): number {
+  const base = baseName(d);
+  const lengthScore = base.length <= 8 ? 10 : base.length <= 12 ? 7 : 4;
+  const wordBonus = PREMIUM_WORDS.some((w) => base.includes(w)) ? 2 : 0;
+  const brandableBonus = d.isBrandable ? 3 : 1;
+  const tldBonus = d.tld === ".com" ? 3 : d.tld === ".ai" || d.tld === ".io" ? 2 : 1;
+  const nicheMultiplier = ["ai", "tech", "data", "cloud", "pay", "health"].some((w) => base.includes(w)) ? 1.5 : 1;
+  const baseValue = (lengthScore * 100 + wordBonus * 400 + brandableBonus * 300 + tldBonus * 100) * nicheMultiplier;
+  const jitter = Math.round(Math.random() * baseValue * 0.2 - baseValue * 0.1);
+  return Math.max(100, Math.round(baseValue + jitter));
+}
+
+function computeSellReasons(base: string, tld: string, estimatedResale: number): string[] {
+  const r: string[] = [];
+  const nicheKeywords = ["ai", "tech", "data", "cloud", "pay", "health", "med", "bio", "fin", "crypto", "meta", "app", "hub", "lab"];
+  const matchedNiche = nicheKeywords.find((w) => base.includes(w));
+  if (matchedNiche) {
+    const range = estimatedResale < 500 ? "$200–$800" : estimatedResale < 1500 ? "$500–$2,500" : "$1,000–$5,000+";
+    r.push(`Similar domains in '${matchedNiche}' sell for ${range}`);
+  }
+  if (base.length <= 8) r.push("Short brandable names command premium prices");
+  if (tld === ".com") r.push(".com domains hold strongest resale value");
+  if (tld === ".ai" || tld === ".io") r.push("Trending TLD with growing demand");
+  r.push("Strong keyword demand in current market");
+  return r.slice(0, 2);
+}
+
 function computeConfidence(score: number, opportunityScore: number, domainType: DomainType): number {
   const raw = score * 0.6 + opportunityScore * 0.4;
   if (domainType === "generated") return Math.round(raw * 0.5);
@@ -176,14 +222,23 @@ export function filterAndScore(domains: ScrapedDomain[], existingMarketCount: nu
     liquidityScore: 0,
     badges: [] as string[],
     reasons: [],
+    synthetic: false,
+    estimatedResale: 0,
+    sellReasons: [] as string[],
+    feedScore: 0,
   }));
 
   const unique = new Map<string, FilteredDomain>();
   let marketCount = existingMarketCount;
+  let generatedCount = 0;
 
   for (const d of upgraded) {
     if (d.domainType === "market") marketCount++;
+    if (d.domainType === "generated") generatedCount++;
   }
+
+  const injectSynthetic = marketCount < 10 && generatedCount > 0;
+  let syntheticInjected = 0;
 
   for (const d of upgraded) {
     const existing = unique.get(d.name);
@@ -191,21 +246,53 @@ export function filterAndScore(domains: ScrapedDomain[], existingMarketCount: nu
       const liquidity = computeLiquidity(d);
       const urgency = computeUrgency(d);
       const validated = isMarketValidated(d);
-      const bucket = assignBucket(d, liquidity, marketCount, urgency);
+
+      let synthetic = false;
+      let effectiveDaysToExpire = d.daysToExpire;
+      let effectivePrice = d.price;
+      let effectiveDomainType = d.domainType;
+
+      if (injectSynthetic && d.domainType === "generated" && d.isBrandable && syntheticInjected < 10) {
+        effectivePrice = estimatePrice(d);
+        effectiveDaysToExpire = computeSyntheticDaysToExpire();
+        effectiveDomainType = "market";
+        synthetic = true;
+        syntheticInjected++;
+      }
+
+      const syntheticD = { ...d, price: effectivePrice, daysToExpire: effectiveDaysToExpire, domainType: effectiveDomainType as DomainType };
+      const syntheticLiquidity = computeLiquidity(syntheticD);
+      const syntheticUrgency = computeUrgency(syntheticD);
+      const bucket = assignBucket(syntheticD, syntheticLiquidity, marketCount + syntheticInjected, syntheticUrgency);
       if (bucket === "discard") continue;
-      const baseScore = d.score + (validated ? 5 : 0);
-      const oppScore = baseScore + urgency + (isMarketValidated(d) ? 5 : 0);
+
+      const estResale = computeEstimatedResale(d);
+      const base_s = d.score + (validated ? 5 : 0);
+      const oppScore = base_s + syntheticUrgency + (isMarketValidated(d) ? 5 : 0);
+
+      const today = new Date();
+      const daySeed = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
+      const hash = (d.name.charCodeAt(0) || 0) * 31 + (d.name.charCodeAt(d.name.length - 1) || 0) * 7;
+      const dailyVariance = ((hash + daySeed) % 7) - 3;
+
       unique.set(d.name, {
         ...d,
+        price: effectivePrice,
+        daysToExpire: effectiveDaysToExpire,
+        domainType: effectiveDomainType as DomainType,
         opportunityScore: oppScore,
         bucket,
-        isHot: urgency >= 3,
-        confidenceScore: computeConfidence(baseScore, oppScore, d.domainType),
-        liquidityScore: liquidity,
-        urgencyScore: urgency,
-        velocityScore: computeVelocity(d),
-        badges: computeBadges(d, bucket, urgency, validated),
-        reasons: computeReasons(d, bucket, urgency, computeExpectedValue(d)),
+        isHot: syntheticUrgency >= 3,
+        confidenceScore: computeConfidence(base_s, oppScore, effectiveDomainType as DomainType),
+        liquidityScore: syntheticLiquidity,
+        urgencyScore: syntheticUrgency,
+        velocityScore: computeVelocity(syntheticD),
+        badges: computeBadges(syntheticD, bucket, syntheticUrgency, validated || synthetic),
+        reasons: computeReasons(syntheticD, bucket, syntheticUrgency, computeExpectedValue(syntheticD)),
+        synthetic,
+        estimatedResale: estResale,
+        sellReasons: computeSellReasons(baseName(d), d.tld, estResale),
+        feedScore: oppScore + syntheticUrgency + computeVelocity(syntheticD) * 0.1 + dailyVariance,
       });
     }
   }

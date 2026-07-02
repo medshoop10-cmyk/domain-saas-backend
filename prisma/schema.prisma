@@ -93,6 +93,7 @@ model Domain {
   confidenceScore  Int      @default(0)
   liquidityScore   Int      @default(0)
   domainType       String   @default("generated")
+  synthetic        Boolean  @default(false)
   urgencyScore     Int      @default(0)
   bids             Int      @default(0)
   daysToExpire     Int?
