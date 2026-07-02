@@ -6,7 +6,6 @@ import { optionalAuth, requireAuth, AuthRequest } from "../middleware/auth";
 import { checkUsageLimit } from "../middleware/checkUsageLimit";
 import { recordSearch } from "../services/trending";
 import { getExpansionKeywords } from "../services/domainGenerator";
-import { ingestDomains } from "../jobs/domainIngestion";
 
 const router = Router();
 
@@ -227,7 +226,8 @@ const searchSchema = z.object({
 router.post("/ingest", requireAuth, async (req: AuthRequest, res: Response) => {
   try {
     const count = Math.min(parseInt(req.body.count as string) || 500, 5000);
-    const result = await ingestDomains(count);
+    const mod = await import("../jobs/domainIngestion");
+    const result = await mod.ingestDomains(count);
     res.json({ message: `Ingested ${result.generator + result.scraper} domains (${result.scored} scored)`, ...result });
   } catch (err) {
     res.status(500).json({ error: "Ingestion failed", detail: (err as Error).message });
