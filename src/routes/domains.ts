@@ -388,6 +388,40 @@ router.get("/search", optionalAuth, checkUsageLimit("search"), async (req: AuthR
   }
 });
 
+router.get("/expand", async (req, res: Response) => {
+  try {
+    const q = (req.query.q as string)?.trim()?.toLowerCase();
+    if (!q || q.length < 2) return res.json({ query: q, suggestions: [], expansions: [] });
+
+    const expansions = getExpansionKeywords(q);
+
+    let suggestions: Array<{ name: string; tld: string; score: number }> = [];
+    if (expansions.length > 0) {
+      suggestions = await prisma.domain.findMany({
+        where: {
+          OR: expansions.slice(0, 5).map((term) => ({ name: { contains: term, mode: "insensitive" } })),
+        },
+        select: { name: true, tld: true, score: true },
+        orderBy: { score: "desc" },
+        take: 6,
+      });
+    }
+
+    if (suggestions.length === 0) {
+      for (const exp of expansions.slice(0, 6)) {
+        if (exp.length >= 3) {
+          suggestions.push({ name: exp + "hub", tld: ".com", score: 85 });
+          suggestions.push({ name: "get" + exp, tld: ".io", score: 78 });
+        }
+      }
+    }
+
+    res.json({ query: q, suggestions, expansions });
+  } catch {
+    res.json({ query: req.query.q, suggestions: [], expansions: [] });
+  }
+});
+
 router.get("/:id", async (req, res: Response) => {
   const id = req.params.id as string;
   const domain = await prisma.domain.findUnique({
@@ -404,42 +438,6 @@ router.get("/:id", async (req, res: Response) => {
   }
 
   res.json({ ...domain, domain: domain.name + domain.tld });
-});
-
-router.get("/expand", async (req, res: Response) => {
-  try {
-    const q = (req.query.q as string)?.trim()?.toLowerCase();
-    if (!q || q.length < 2) return res.json({ query: q, suggestions: [], expansions: [] });
-
-    const expansions = getExpansionKeywords(q);
-
-    // Suggest related domain names from the DB
-    let suggestions: Array<{ name: string; tld: string; score: number }> = [];
-    if (expansions.length > 0) {
-      suggestions = await prisma.domain.findMany({
-        where: {
-          OR: expansions.slice(0, 5).map((term) => ({ name: { contains: term, mode: "insensitive" } })),
-        },
-        select: { name: true, tld: true, score: true },
-        orderBy: { score: "desc" },
-        take: 6,
-      });
-    }
-
-    // If no DB results, generate brandable suggestions
-    if (suggestions.length === 0) {
-      for (const exp of expansions.slice(0, 6)) {
-        if (exp.length >= 3) {
-          suggestions.push({ name: exp + "hub", tld: ".com", score: 85 });
-          suggestions.push({ name: "get" + exp, tld: ".io", score: 78 });
-        }
-      }
-    }
-
-    res.json({ query: q, suggestions, expansions });
-  } catch {
-    res.json({ query: req.query.q, suggestions: [], expansions: [] });
-  }
 });
 
 export default router;
