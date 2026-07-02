@@ -3,6 +3,7 @@ import { z } from "zod";
 import prisma from "../config/database";
 import redis from "../config/redis";
 import { optionalAuth, AuthRequest } from "../middleware/auth";
+import { requireAuth } from "../middleware/auth";
 import { checkUsageLimit } from "../middleware/checkUsageLimit";
 import { recordSearch } from "../services/trending";
 import { getExpansionKeywords } from "../services/domainGenerator";
@@ -221,6 +222,17 @@ const searchSchema = z.object({
   limit: z.coerce.number().min(1).max(100).optional().default(20),
   brandable: z.coerce.boolean().optional(),
   cursor: z.string().optional(),
+});
+
+router.post("/ingest", requireAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const count = Math.min(parseInt(req.body.count as string) || 500, 5000);
+    const { ingestDomains } = await import("../jobs/domainIngestion");
+    const result = await ingestDomains(count);
+    res.json({ message: `Ingested ${result.generator + result.scraper} domains (${result.scored} scored)`, ...result });
+  } catch (err) {
+    res.status(500).json({ error: "Ingestion failed" });
+  }
 });
 
 router.get("/search", optionalAuth, checkUsageLimit("search"), async (req: AuthRequest, res: Response) => {
