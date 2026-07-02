@@ -15,6 +15,7 @@ const SELECT = {
 } as const;
 
 const PREMIUM_WORDS = new Set(["ai", "tech", "cloud", "data", "app", "hub", "lab", "pay", "flow", "base", "stack", "peak", "nexus", "core", "prime", "pulse"]);
+const NICHE_KEYWORDS = ["ai", "tech", "data", "cloud", "pay", "health", "med", "bio", "fin", "crypto", "meta", "app", "hub", "lab"];
 
 function dailySeed(): number {
   const d = new Date();
@@ -25,20 +26,56 @@ function nameHash(name: string): number {
   return ((name.charCodeAt(0) || 0) * 31 + (name.charCodeAt(name.length - 1) || 0) * 7) % 13;
 }
 
-function computeBadges(d: any): string[] {
-  const badges: string[] = [];
-  if (d.urgencyScore >= 5) badges.push("🔥 Ending Soon");
-  else if (d.urgencyScore >= 3) badges.push("⏳ Expiring Soon");
-  if (d.bucket === "undervalued") badges.push("💰 Undervalued");
-  if (d.bucket === "trending") badges.push("📈 Trending");
-  if (d.synthetic) badges.push("🤖 AI Estimated Deal");
-  if (d.isBrandable) badges.push("🧠 Brandable");
-  if (d.bids > 3) badges.push("🏆 Multiple Bids");
-  if (d.velocityScore > 50) badges.push("⚡ Rising interest");
-  return badges.slice(0, 2);
+function computeConfidenceLabel(d: any, synthetic: boolean): string {
+  if (synthetic) return "Medium";
+  if (d.confidenceScore >= 80) return "High";
+  if (d.confidenceScore >= 50) return "Medium";
+  return "Low";
 }
 
-function computeReasons(d: any): string[] {
+function computeMarketLabel(d: any): { label: string; badge: string } {
+  if (d.synthetic) return { label: "AI Estimated", badge: "🤖 AI Estimated Deal" };
+  if (d.bids && d.bids > 0) return { label: `Current bid: $${d.price} (${d.bids} bids)`, badge: "🔥 Live Auction" };
+  if (d.price) return { label: `Listed at $${d.price}`, badge: "🔥 Live Auction" };
+  return { label: "Available", badge: "📋 Available" };
+}
+
+function computeBadges(d: any, synthetic: boolean): string[] {
+  const badges: string[] = [];
+  const { badge } = computeMarketLabel(d);
+  badges.push(badge);
+  if (d.urgencyScore >= 5) badges.push("🔥 Ending Soon");
+  else if (d.urgencyScore >= 3) badges.push("⏳ Expiring Soon");
+  if (d.bucket === "undervalued" && !synthetic) badges.push("💰 Undervalued");
+  if (d.bucket === "trending") badges.push("📈 Trending");
+  if (d.isBrandable && !synthetic) badges.push("🧠 Brandable");
+  if (d.bids > 3) badges.push("🏆 Multiple Bids");
+  if (d.velocityScore > 50) badges.push("⚡ Rising interest");
+  return badges.slice(0, 3);
+}
+
+function computePriceRange(price: number | null | undefined, estimated: number): string {
+  if (price) return `$${price}`;
+  const low = Math.round(estimated * 0.6);
+  const high = Math.round(estimated * 1.4);
+  return `$${low} – $${high}`;
+}
+
+function computeResaleRange(estimated: number): string {
+  const low = Math.round(estimated * 0.7);
+  const high = Math.round(estimated * 1.3);
+  return `$${low} – $${high}`;
+}
+
+function computeUndervaluedReason(d: any, estimatedResale: number): string | null {
+  if (d.bucket !== "undervalued" && !d.synthetic) return null;
+  const price = d.price;
+  if (!price) return "Estimated below market value";
+  if (estimatedResale > price * 2) return `Comparable names sell ~$${estimatedResale}`;
+  return "Priced below intrinsic quality score";
+}
+
+function computeReasons(d: any, synthetic: boolean): string[] {
   const base = d.name.replace(/\..*$/, "").toLowerCase();
   const r: string[] = [];
   if (base.length <= 8) r.push("Short & pronounceable");
@@ -46,24 +83,26 @@ function computeReasons(d: any): string[] {
   if (d.tld === ".com") r.push("Premium .com TLD");
   if (d.tld === ".ai" || d.tld === ".io") r.push("Trending TLD");
   if (d.isBrandable) r.push("High brandability");
-  if (d.price !== null && d.price < 300) r.push("Low price vs quality");
+  if (!synthetic && d.price !== null && d.price < 300) r.push("Low price vs quality");
   if (d.traffic > 100) r.push("Has existing traffic");
   if (d.backlinks > 50) r.push("Established backlink profile");
+  if (synthetic) r.push("Estimated based on length, TLD & keyword demand");
   return r.slice(0, 3);
 }
 
-function computeSellReasons(d: any, estimatedResale: number): string[] {
+function computeSellReasons(d: any, estimatedResale: number, synthetic: boolean): string[] {
   const base = d.name.replace(/\..*$/, "").toLowerCase();
   const r: string[] = [];
-  const niches = ["ai", "tech", "data", "cloud", "pay", "health", "med", "bio", "fin", "crypto", "meta", "app", "hub", "lab"];
-  const matched = niches.find((w) => base.includes(w));
+  const matched = NICHE_KEYWORDS.find((w) => base.includes(w));
   if (matched) {
-    const range = estimatedResale < 500 ? "$200–$800" : estimatedResale < 1500 ? "$500–$2,500" : "$1,000–$5,000+";
+    const range = computeResaleRange(estimatedResale);
     r.push(`Similar '${matched}' domains sell for ${range}`);
   }
   if (base.length <= 8) r.push("Short brandable names command premium prices");
   if (d.tld === ".com") r.push(".com domains hold strongest resale value");
-  r.push("Strong keyword demand in current market");
+  if (d.tld === ".ai" || d.tld === ".io") r.push("Trending TLD with growing demand");
+  if (!synthetic && d.bids && d.bids > 0) r.push("Active bidding signals market validation");
+  if (synthetic) r.push("AI estimated valuation based on market comps");
   return r.slice(0, 2);
 }
 
@@ -96,6 +135,7 @@ router.get("/", optionalAuth, async (req: AuthRequest, res: Response) => {
     });
 
     let results: any[] = marketDomains.map((d) => ({ ...d, synthetic: false }));
+    let syntheticInjectedCount = 0;
 
     if (injectSynthetic && results.length < limit && generatedCount > 0) {
       const remaining = limit - results.length;
@@ -107,66 +147,61 @@ router.get("/", optionalAuth, async (req: AuthRequest, res: Response) => {
       });
 
       const brandableResults = brandable.slice(0, remaining).map((d) => {
-        const base = d.name.replace(/\..*$/, "");
-        const lengthScore = base.length <= 8 ? 10 : base.length <= 12 ? 7 : 4;
-        const wordBonus = PREMIUM_WORDS.has(base) ? 2 : 0;
-        const brandableBonus = d.isBrandable ? 3 : 0;
-        const tldBonus = d.tld === ".com" ? 3 : d.tld === ".ai" || d.tld === ".io" ? 2 : 0;
-        const syntheticPrice = lengthScore * 50 + wordBonus * 200 + brandableBonus * 200 + tldBonus * 100 + Math.round(Math.random() * 100 - 50);
-        const daysToExp = 1 + Math.floor(Math.random() * 6);
-        const urgency = daysToExp < 1 ? 5 : daysToExp < 3 ? 3 : daysToExp < 7 ? 1 : 0;
-        const oppScore = d.score + urgency + 5;
         const estResale = computeEstimatedResale(d);
         return {
           ...d,
           synthetic: true,
-          price: Math.max(50, syntheticPrice),
-          daysToExpire: daysToExp,
-          urgencyScore: urgency,
-          opportunityScore: oppScore,
-          confidenceScore: Math.round((d.score * 0.6 + oppScore * 0.4) * 0.7),
+          price: null,
+          daysToExpire: 1 + Math.floor(Math.random() * 6),
+          urgencyScore: 0,
+          opportunityScore: d.score + 3,
+          confidenceScore: Math.round((d.score * 0.6 + (d.score + 3) * 0.4) * 0.7),
           liquidityScore: 3,
           velocityScore: Math.round(Math.random() * 30),
-          sellReasons: computeSellReasons(d, estResale),
+          sellReasons: computeSellReasons(d, estResale, true),
           estimatedResale: estResale,
         };
       });
+
+      syntheticInjectedCount = brandableResults.length;
       results = [...results, ...brandableResults];
     }
 
     const seed = dailySeed();
+    const realCount = results.filter((r) => !r.synthetic).length;
+    const estimatedCount = results.filter((r) => r.synthetic).length;
+
     const mapped = results.map((d) => {
       const hash = nameHash(d.name);
       const dailyVariance = ((hash + seed) % 7) - 3;
       const feedScore = (d.opportunityScore || 0) + (d.urgencyScore || 0) + ((d.velocityScore || 0) * 0.1) + dailyVariance;
+      const synthetic = d.synthetic || false;
+      const estResale = d.estimatedResale || computeEstimatedResale(d);
+      const { label: marketLabel } = computeMarketLabel(d);
+      const confidenceLabel = computeConfidenceLabel(d, synthetic);
+
       return {
         id: d.id,
         name: d.name,
         tld: d.tld,
         domain: d.name + d.tld,
         score: d.score,
-        price: d.price,
-        traffic: d.traffic,
-        backlinks: d.backlinks,
-        source: d.source,
-        bucket: d.bucket,
-        domainType: d.domainType,
-        synthetic: d.synthetic || false,
-        opportunityScore: d.opportunityScore,
-        urgencyScore: d.urgencyScore,
+        market: marketLabel,
+        price: synthetic ? computePriceRange(null, estResale) : computePriceRange(d.price, estResale),
+        estimatedResale: computeResaleRange(estResale),
+        confidence: confidenceLabel,
         confidenceScore: d.confidenceScore,
-        liquidityScore: d.liquidityScore,
-        velocityScore: d.velocityScore,
-        estimatedResale: d.estimatedResale || computeEstimatedResale(d),
-        badges: computeBadges(d),
-        reasons: computeReasons(d),
-        sellReasons: d.sellReasons || computeSellReasons(d, d.estimatedResale || computeEstimatedResale(d)),
+        bucket: synthetic ? "estimated" : d.bucket,
+        domainType: synthetic ? "estimated" : d.domainType,
+        badges: computeBadges(d, synthetic),
+        reasons: computeReasons(d, synthetic),
+        sellReasons: d.sellReasons || computeSellReasons(d, estResale, synthetic),
+        undervaluedReason: computeUndervaluedReason(d, estResale),
         feedScore: Math.round(feedScore * 10) / 10,
       };
     });
 
     mapped.sort((a, b) => b.feedScore - a.feedScore);
-
     const paginated = mapped.slice(skip, skip + limit);
 
     res.json({
@@ -174,8 +209,7 @@ router.get("/", optionalAuth, async (req: AuthRequest, res: Response) => {
       total: results.length,
       page,
       limit,
-      syntheticInjected: injectSynthetic,
-      marketCount,
+      realityRatio: { real: realCount, estimated: estimatedCount },
     });
   } catch (err) {
     res.status(500).json({ error: "Failed to build feed" });
