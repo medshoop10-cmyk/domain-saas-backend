@@ -28,8 +28,11 @@ export async function upsertScrapedDomains(
             confidenceScore: d.confidenceScore,
             liquidityScore: d.liquidityScore,
             domainType: d.domainType,
+            urgencyScore: d.urgencyScore,
             ...(d.price !== undefined ? { price: d.price } : {}),
             ...(d.traffic !== undefined ? { traffic: d.traffic } : {}),
+            ...(d.bids !== undefined ? { bids: d.bids } : {}),
+            ...(d.daysToExpire !== undefined ? { daysToExpire: d.daysToExpire } : {}),
           },
           create: {
             name: d.name,
@@ -48,6 +51,9 @@ export async function upsertScrapedDomains(
             confidenceScore: d.confidenceScore,
             liquidityScore: d.liquidityScore,
             domainType: d.domainType,
+            urgencyScore: d.urgencyScore,
+            bids: d.bids ?? 0,
+            daysToExpire: d.daysToExpire,
           },
         })
       )

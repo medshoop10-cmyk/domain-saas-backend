@@ -13,12 +13,24 @@ const PREMIUM_TLDS = new Set([".com", ".ai", ".io", ".app"]);
 const HIGH_VALUE_NICHES = ["ai", "health", "finance", "crypto", "data", "cloud", "pay", "trade", "meta", "tech", "bio", "med", "edu"];
 const REASON_WORDS = ["ai", "tech", "cloud", "data", "app", "hub", "lab", "pay", "flow", "base", "stack", "peak", "nexus", "core", "prime", "pulse"];
 
-function computeReasonsForDomain(d: { name: string; tld: string; length: number; score: number; isBrandable: boolean; price?: number | null; traffic?: number | null; backlinks: number; source: string; domainType?: string | null; liquidityScore?: number | null }): string[] {
+const BADGE_WORDS = new Set(["ai", "tech", "cloud", "data", "app", "hub", "lab", "pay", "flow", "base", "stack", "peak", "nexus", "core", "prime", "pulse"]);
+
+function computeBadgesForDomain(d: { name: string; score: number; isBrandable: boolean; price?: number | null; traffic?: number | null; backlinks: number; source: string; domainType?: string | null; bucket?: string | null }): string[] {
+  const badges: string[] = [];
+  if (d.bucket === "trending") badges.push("📈 Trending");
+  if (d.bucket === "undervalued") badges.push("💰 Undervalued");
+  if (d.isBrandable) badges.push("🧠 Brandable");
+  if (d.traffic && d.traffic > 100) badges.push("📈 High Traffic");
+  if (d.backlinks > 50) badges.push("🔗 Established");
+  return badges.slice(0, 2);
+}
+
+function computeReasonsForDomain(d: { name: string; tld: string; length: number; score: number; isBrandable: boolean; price?: number | null; traffic?: number | null; backlinks: number; source: string; domainType?: string | null; liquidityScore?: number | null; bucket?: string | null }): string[] {
   const base = d.name.replace(/\..*$/, "").toLowerCase();
   const r: string[] = [];
   if (base.length <= 8) r.push("Short & pronounceable");
   if (base.length >= 4 && base.length <= 10 && !base.includes("-") && !/\d/.test(base)) r.push("Startup-friendly name");
-  if (REASON_WORDS.some((w) => base.includes(w))) r.push("Contains premium keyword");
+  if (BADGE_WORDS.has(base)) r.push("Contains premium keyword");
   if (d.tld === ".com") r.push("Premium .com TLD");
   if (d.tld === ".ai" || d.tld === ".io") r.push("Trending TLD");
   if (d.isBrandable) r.push("High brandability");
@@ -388,6 +400,7 @@ router.get("/search", optionalAuth, checkUsageLimit("search"), async (req: AuthR
     const mapped = domains.map((d) => ({
       ...d,
       domain: d.name + d.tld,
+      badges: computeBadgesForDomain(d),
       reasons: computeReasonsForDomain(d),
       breakdown: computeScoreBreakdown(d, q, trendingKeywords).breakdown,
     }));
@@ -487,8 +500,9 @@ router.get("/:id", async (req, res: Response) => {
       id: true, name: true, tld: true, length: true,
       score: true, isBrandable: true, hasKeywords: true,
       backlinks: true, source: true, price: true, traffic: true,
-      domainType: true, liquidityScore: true,
-      createdAt: true,
+              domainType: true, liquidityScore: true,
+              urgencyScore: true, bids: true, daysToExpire: true,
+              createdAt: true,
     },
   });
 

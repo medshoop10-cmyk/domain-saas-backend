@@ -5,6 +5,7 @@ export interface RawDomain {
   traffic?: number;
   backlinks?: number;
   expiryDate?: string;
+  bids?: number;
   metadata?: Record<string, string>;
 }
 
@@ -23,6 +24,8 @@ export interface ScrapedDomain {
   hasKeywords: boolean;
   score: number;
   domainType: DomainType;
+  bids?: number;
+  daysToExpire?: number;
 }
 
 const BRANDABLE_PATTERNS = [
@@ -69,6 +72,12 @@ export function normalizeDomain(raw: RawDomain): ScrapedDomain {
   const tld = dotIndex > 0 ? name.substring(dotIndex) : `.${name}`;
 
   const isMarket = raw.source !== "wordlist" && (!!raw.price || (raw.traffic ?? 0) > 0 || (raw.backlinks ?? 0) > 0);
+  const expiry = raw.expiryDate ? new Date(raw.expiryDate) : undefined;
+  const daysToExpire = expiry
+    ? Math.max(0, Math.round((expiry.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+    : raw.source === "godaddy"
+    ? 7
+    : undefined;
 
   return {
     name,
@@ -78,7 +87,7 @@ export function normalizeDomain(raw: RawDomain): ScrapedDomain {
     price: raw.price,
     traffic: raw.traffic,
     backlinks: raw.backlinks ?? 0,
-    expiryDate: raw.expiryDate ? new Date(raw.expiryDate) : undefined,
+    expiryDate: expiry,
     isBrandable: isBrandable(domainName),
     hasKeywords: hasKeywords(domainName),
     score: computeScore({
@@ -89,5 +98,7 @@ export function normalizeDomain(raw: RawDomain): ScrapedDomain {
       backlinks: raw.backlinks ?? 0,
     }),
     domainType: isMarket ? "market" : "generated",
+    bids: raw.bids,
+    daysToExpire,
   };
 }
