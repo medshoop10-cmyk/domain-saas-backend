@@ -85,7 +85,6 @@ export function generateDomains(count: number): Array<{ name: string; tld: strin
 export function getExpansionKeywords(query: string): string[] {
   const q = query.toLowerCase().trim();
   const results = new Set<string>();
-  results.add(q);
 
   // Check direct topic match
   for (const [, words] of Object.entries(TOPIC_WORDS)) {

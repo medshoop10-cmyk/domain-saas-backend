@@ -119,7 +119,8 @@ function computeEstimatedResale(d: any): number {
 
 router.get("/", optionalAuth, async (req: AuthRequest, res: Response) => {
   try {
-    const limit = Math.min(parseInt(req.query.limit as string) || 30, 100);
+    const rawLimit = req.query.limit !== undefined ? parseInt(req.query.limit as string) : 30;
+    const limit = Math.min(Math.max(1, rawLimit), 100);
     const page = Math.max(0, parseInt(req.query.page as string) || 0);
     const skip = page * limit;
 

@@ -291,6 +291,19 @@ router.get("/search", optionalAuth, checkUsageLimit("search"), async (req: AuthR
     const params = searchSchema.parse(req.query);
     const { q, tld, minScore, maxScore, minLength, maxLength, sortBy, sortOrder, page, limit, brandable, cursor } = params;
 
+    if (!q || q.trim().length < 2) {
+      return res.json({
+        domains: [],
+        topOpportunity: null,
+        total: 0,
+        page,
+        limit,
+        totalPages: 0,
+        nextCursor: null,
+        cached: false,
+      });
+    }
+
     const where: any = {};
 
     if (q) {
