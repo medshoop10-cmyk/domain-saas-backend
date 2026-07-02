@@ -5,6 +5,7 @@ import redis from "../config/redis";
 import { optionalAuth, AuthRequest } from "../middleware/auth";
 import { checkUsageLimit } from "../middleware/checkUsageLimit";
 import { recordSearch } from "../services/trending";
+import { getExpansionKeywords } from "../services/domainGenerator";
 
 const router = Router();
 
@@ -230,7 +231,12 @@ router.get("/search", optionalAuth, checkUsageLimit("search"), async (req: AuthR
     const where: any = {};
 
     if (q) {
-      where.name = { contains: q.toLowerCase(), mode: "insensitive" };
+      const expansions = getExpansionKeywords(q);
+      if (expansions.length > 1) {
+        where.AND = [{ OR: expansions.map((term) => ({ name: { contains: term, mode: "insensitive" as const } })) }];
+      } else {
+        where.name = { contains: q.toLowerCase(), mode: "insensitive" };
+      }
     }
     if (tld) {
       where.tld = tld.startsWith(".") ? tld.toLowerCase() : `.${tld.toLowerCase()}`;
@@ -349,6 +355,12 @@ router.get("/search", optionalAuth, checkUsageLimit("search"), async (req: AuthR
       };
     }
 
+    let suggestions: string[] = [];
+    if (mapped.length === 0 && q) {
+      const expansions = getExpansionKeywords(q);
+      suggestions = expansions.slice(0, 8);
+    }
+
     const result = {
       domains: mapped,
       topOpportunity,
@@ -358,6 +370,7 @@ router.get("/search", optionalAuth, checkUsageLimit("search"), async (req: AuthR
       totalPages: Math.ceil(total / limit),
       nextCursor,
       cached: false,
+      suggestions: suggestions.length > 0 ? suggestions : undefined,
     };
 
     try { await redis.setex(cacheKey, 60, JSON.stringify(result)); } catch {}
@@ -391,6 +404,42 @@ router.get("/:id", async (req, res: Response) => {
   }
 
   res.json({ ...domain, domain: domain.name + domain.tld });
+});
+
+router.get("/expand", async (req, res: Response) => {
+  try {
+    const q = (req.query.q as string)?.trim()?.toLowerCase();
+    if (!q || q.length < 2) return res.json({ query: q, suggestions: [], expansions: [] });
+
+    const expansions = getExpansionKeywords(q);
+
+    // Suggest related domain names from the DB
+    let suggestions: Array<{ name: string; tld: string; score: number }> = [];
+    if (expansions.length > 0) {
+      suggestions = await prisma.domain.findMany({
+        where: {
+          OR: expansions.slice(0, 5).map((term) => ({ name: { contains: term, mode: "insensitive" } })),
+        },
+        select: { name: true, tld: true, score: true },
+        orderBy: { score: "desc" },
+        take: 6,
+      });
+    }
+
+    // If no DB results, generate brandable suggestions
+    if (suggestions.length === 0) {
+      for (const exp of expansions.slice(0, 6)) {
+        if (exp.length >= 3) {
+          suggestions.push({ name: exp + "hub", tld: ".com", score: 85 });
+          suggestions.push({ name: "get" + exp, tld: ".io", score: 78 });
+        }
+      }
+    }
+
+    res.json({ query: q, suggestions, expansions });
+  } catch {
+    res.json({ query: req.query.q, suggestions: [], expansions: [] });
+  }
 });
 
 export default router;
